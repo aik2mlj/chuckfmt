@@ -19,6 +19,8 @@ static RE_PAD_LSHIFT_MAL: Lazy<Regex> = Lazy::new(|| Regex::new(r"< < <\s*").unw
 static RE_PAD_RSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s*>>>\s*;").unwrap());
 static RE_PERCENT: Lazy<Regex> = Lazy::new(|| Regex::new(r"%\s*\(").unwrap());
 static RE_LONG_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"-\s*-\s*>").unwrap());
+static RE_UNARY_SIGN_NUM: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^([+-])\s+([0-9]+(?:\.[0-9]*)?|\.[0-9]+)").unwrap());
 
 /// Applies ChucK-specific formatting transforms to the input string.
 fn apply_transforms(s: &str) -> String {
@@ -32,6 +34,7 @@ fn apply_transforms(s: &str) -> String {
     let s = RE_PAD_RSHIFT.replace_all(&s, " >>>;");
     let s = RE_PERCENT.replace_all(&s, "%(");
     let s = RE_LONG_ARROW.replace_all(&s, "-->");
+    let s = RE_UNARY_SIGN_NUM.replace_all(&s, "$1$2");
     s.into_owned()
 }
 
