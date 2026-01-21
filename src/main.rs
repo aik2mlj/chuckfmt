@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -22,13 +21,6 @@ static RE_PERCENT: Lazy<Regex> = Lazy::new(|| Regex::new(r"%\s*\(").unwrap());
 static RE_LONG_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"-\s*-\s*>").unwrap());
 
 /// Applies ChucK-specific formatting transforms to the input string.
-///
-/// These transforms fix clang-format's output for ChucK syntax:
-/// - `= >` → `=>` (stitch arrow)
-/// - `@ =>` → `@=>` (at-arrow)
-/// - `<digit> ::` → `<digit>::` (remove space before scope operator after digits)
-/// - `<<<...` → `<<< ` (normalize debugging output operator padding)
-/// - `...>>>` → ` >>>` (normalize debugging output operator padding)
 fn apply_transforms(s: &str) -> String {
     let s = RE_STITCH_ARROW.replace_all(s, "=>");
     let s = RE_STITCH_LEFT_ARROW.replace_all(&s, "=<");
@@ -52,39 +44,211 @@ fn main() {
     }
 }
 
-/// Main entry point logic that handles both streaming and in-place modes.
-///
-/// Without `-i`: runs clang-format, applies transforms, writes to stdout.
-/// With `-i`: runs clang-format in-place first, then post-processes each file.
+/// Matches your bash wrapper behavior:
+/// - Parse args into opts + files (supports `--` delimiter; heuristic otherwise)
+/// - If user didn't provide assume-filename, append `--assume-filename=code.cs`
+/// - Without `-i`:
+///   - If no files: read stdin, run clang-format on stdin, transforms, stdout
+///   - If files: for each file, run clang-format on stdin (file contents), transforms, stdout
+/// - With `-i`:
+///   - Requires at least one file
+///   - For each file: run clang-format on stdin (file contents) with opts (minus -i), transforms, overwrite file
 fn real_main() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let clang_format = resolve_clang_format()?;
 
     let has_inplace = args.iter().any(|a| a == "-i");
 
+    let (mut opts, mut files) = split_opts_files(&args);
+    expand_files_from_list(&opts, &mut files)?;
+
+    if !has_assume_filename(&opts) {
+        opts.push("--assume-filename=code.cs".to_string());
+    }
+
     if !has_inplace {
-        // clang-format output -> transforms -> stdout
-        let out = run_clang_format_capture(&clang_format, &args)?;
-        // clang-format outputs text; treat as UTF-8 (common case).
-        // If you need arbitrary encodings, we can switch to lossy decode.
-        let text =
-            String::from_utf8(out).map_err(|e| format!("clang-format output not UTF-8: {e}"))?;
-        let fixed = apply_transforms(&text);
-        io::stdout()
-            .write_all(fixed.as_bytes())
-            .map_err(|e| format!("failed to write stdout: {e}"))?;
+        // If no files detected, behave like clang-format: stdin -> stdout
+        if files.is_empty() {
+            let mut input = String::new();
+            io::stdin()
+                .read_to_string(&mut input)
+                .map_err(|e| format!("failed to read stdin: {e}"))?;
+
+            let formatted = run_clang_format_on_stdin_capture(&clang_format, &opts, &input)?;
+            let fixed = apply_transforms(&formatted);
+
+            io::stdout()
+                .write_all(fixed.as_bytes())
+                .map_err(|e| format!("failed to write stdout: {e}"))?;
+            return Ok(());
+        }
+
+        // Files provided: format each file via stdin and write to stdout
+        let mut out = io::stdout();
+        for f in files {
+            let input = fs::read_to_string(&f)
+                .map_err(|e| format!("failed to read {}: {e}", f.display()))?;
+
+            let formatted = run_clang_format_on_stdin_capture(&clang_format, &opts, &input)?;
+            let fixed = apply_transforms(&formatted);
+
+            out.write_all(fixed.as_bytes())
+                .map_err(|e| format!("failed to write stdout: {e}"))?;
+        }
         return Ok(());
     }
 
-    // In-place: run clang-format first
-    run_clang_format_passthrough(&clang_format, &args)?;
-
-    // Post-process files edited in place
-    let files = collect_files_for_inplace(&args)?;
-    for f in files {
-        postprocess_file(&f)?;
+    // In-place mode: require at least one file
+    if files.is_empty() {
+        return Err("chuckfmt: -i requires at least one file".to_string());
     }
 
+    // Remove -i from options for the stdin formatting path
+    let opts_no_i: Vec<String> = opts.into_iter().filter(|o| o != "-i").collect();
+
+    for f in files {
+        let input =
+            fs::read_to_string(&f).map_err(|e| format!("failed to read {}: {e}", f.display()))?;
+
+        let formatted = run_clang_format_on_stdin_capture(&clang_format, &opts_no_i, &input)?;
+        let fixed = apply_transforms(&formatted);
+
+        // Match bash behavior: overwrite the file (no "only if changed" optimization)
+        fs::write(&f, fixed).map_err(|e| format!("failed to write {}: {e}", f.display()))?;
+    }
+
+    Ok(())
+}
+
+// -------------------- Arg parsing (opts + files) --------------------
+
+fn has_assume_filename(opts: &[String]) -> bool {
+    opts.iter().any(|o| {
+        o == "--assume-filename"
+            || o == "-assume-filename"
+            || o.starts_with("--assume-filename=")
+            || o.starts_with("-assume-filename=")
+    })
+}
+
+/// Mirrors your bash wrapper parsing:
+/// - If `--` exists: everything before is opts, everything after is files (ignoring "-" and "--")
+/// - Else heuristic:
+///   - options that take a separate value set skip_next and both tokens go into opts
+///   - tokens starting with '@', '-' (including "-") go into opts
+///   - everything else goes into files
+fn split_opts_files(args: &[String]) -> (Vec<String>, Vec<PathBuf>) {
+    if let Some(pos) = args.iter().position(|a| a == "--") {
+        let opts = args[..pos].to_vec();
+        let mut files = Vec::new();
+        for tok in &args[pos + 1..] {
+            if tok == "-" || tok == "--" {
+                continue;
+            }
+            files.push(PathBuf::from(tok));
+        }
+        return (opts, files);
+    }
+
+    let value_takers = [
+        "-Wno-error",
+        "--Wno-error",
+        "-assume-filename",
+        "--assume-filename",
+        "-cursor",
+        "--cursor",
+        "-fallback-style",
+        "--fallback-style",
+        "-ferror-limit",
+        "--ferror-limit",
+        "-files",
+        "--files",
+        "-length",
+        "--length",
+        "-lines",
+        "--lines",
+        "-offset",
+        "--offset",
+        "-qualifier-alignment",
+        "--qualifier-alignment",
+        "-style",
+        "--style",
+    ];
+
+    let mut opts = Vec::new();
+    let mut files = Vec::new();
+    let mut skip_next = false;
+
+    for tok in args {
+        if skip_next {
+            skip_next = false;
+            opts.push(tok.clone());
+            continue;
+        }
+
+        if value_takers.contains(&tok.as_str()) {
+            skip_next = true;
+            opts.push(tok.clone());
+            continue;
+        }
+
+        if tok.starts_with('@') || tok == "-" || tok.starts_with('-') {
+            opts.push(tok.clone());
+            continue;
+        }
+
+        files.push(PathBuf::from(tok));
+    }
+
+    (opts, files)
+}
+
+// -------------------- --files list expansion (no dedup) --------------------
+
+fn expand_files_from_list(opts: &[String], files: &mut Vec<PathBuf>) -> Result<(), String> {
+    // Expand --files <listfile> / --files=<listfile> and -files variants
+    if let Some(listfile) = find_option_value_in(opts, "--files", "-files") {
+        add_files_from_list(files, &listfile)?;
+    }
+    Ok(())
+}
+
+fn find_option_value_in(opts: &[String], long: &str, short: &str) -> Option<String> {
+    // --opt=value / -opt=value
+    for a in opts {
+        if let Some(rest) = a.strip_prefix(&(long.to_string() + "=")) {
+            return Some(rest.to_string());
+        }
+        if let Some(rest) = a.strip_prefix(&(short.to_string() + "=")) {
+            return Some(rest.to_string());
+        }
+    }
+    // --opt value / -opt value (within opts slice)
+    let mut i = 0usize;
+    while i < opts.len() {
+        let a = &opts[i];
+        if a == long || a == short {
+            if i + 1 < opts.len() {
+                return Some(opts[i + 1].clone());
+            } else {
+                return None;
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn add_files_from_list(out: &mut Vec<PathBuf>, listfile: &str) -> Result<(), String> {
+    let content = fs::read_to_string(listfile)
+        .map_err(|e| format!("failed to read --files list '{}': {e}", listfile))?;
+    for line in content.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        out.push(PathBuf::from(t));
+    }
     Ok(())
 }
 
@@ -96,7 +260,6 @@ fn real_main() -> Result<(), String> {
 /// 1. `CLANG_FORMAT_BIN` environment variable (must be executable)
 /// 2. `clang-format` in PATH
 fn resolve_clang_format() -> Result<PathBuf, String> {
-    // 1) explicit override
     if let Ok(p) = env::var("CLANG_FORMAT_BIN") {
         let pb = PathBuf::from(p);
         if is_executable(&pb) {
@@ -108,7 +271,6 @@ fn resolve_clang_format() -> Result<PathBuf, String> {
         ));
     }
 
-    // 2) PATH lookup
     if let Some(pb) = find_in_path(exe_name("clang-format")) {
         return Ok(pb);
     }
@@ -147,10 +309,6 @@ fn is_executable(p: &Path) -> bool {
     }
 }
 
-/// Searches for a program in the system PATH.
-///
-/// If `program` contains a path separator, treats it as a direct path.
-/// On Windows, also tries appending `.exe` if not already present.
 fn find_in_path(program: String) -> Option<PathBuf> {
     if program.contains(std::path::MAIN_SEPARATOR) {
         let p = PathBuf::from(program);
@@ -173,26 +331,40 @@ fn find_in_path(program: String) -> Option<PathBuf> {
     None
 }
 
-// -------------------- Running clang-format --------------------
+// -------------------- Running clang-format (stdin -> stdout capture) --------------------
 
-/// Runs clang-format and captures its stdout output.
+/// Runs clang-format by sending `input` to stdin, capturing stdout as a String.
 ///
-/// Stdin and stderr are inherited from the parent process.
-fn run_clang_format_capture(clang: &Path, args: &[String]) -> Result<Vec<u8>, String> {
+/// stderr is inherited (like your bash wrapper; useful for warnings).
+fn run_clang_format_on_stdin_capture(
+    clang: &Path,
+    opts: &[String],
+    input: &str,
+) -> Result<String, String> {
     let mut child = Command::new(clang)
-        .args(args)
-        .stdin(Stdio::inherit())
+        .args(opts)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| format!("failed to launch clang-format: {e}"))?;
 
-    let mut out = Vec::new();
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "failed to open clang-format stdin".to_string())?;
+        stdin
+            .write_all(input.as_bytes())
+            .map_err(|e| format!("failed writing clang-format stdin: {e}"))?;
+    }
+
+    let mut out = String::new();
     child
         .stdout
         .take()
         .ok_or_else(|| "failed to capture clang-format stdout".to_string())?
-        .read_to_end(&mut out)
+        .read_to_string(&mut out)
         .map_err(|e| format!("failed reading clang-format stdout: {e}"))?;
 
     let status = child
@@ -205,151 +377,6 @@ fn run_clang_format_capture(clang: &Path, args: &[String]) -> Result<Vec<u8>, St
             status.code()
         ));
     }
+
     Ok(out)
-}
-
-/// Runs clang-format with all I/O inherited (passthrough mode).
-///
-/// Used for in-place formatting where clang-format writes directly to files.
-fn run_clang_format_passthrough(clang: &Path, args: &[String]) -> Result<(), String> {
-    let status = Command::new(clang)
-        .args(args)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|e| format!("failed to run clang-format: {e}"))?;
-
-    if !status.success() {
-        return Err(format!(
-            "clang-format failed with exit code {:?}",
-            status.code()
-        ));
-    }
-    Ok(())
-}
-
-// -------------------- Post-processing files --------------------
-
-fn postprocess_file(path: &Path) -> Result<(), String> {
-    let original =
-        fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    let updated = apply_transforms(&original);
-    if updated != original {
-        fs::write(path, updated).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
-    }
-    Ok(())
-}
-
-// -------------------- File collection for -i mode --------------------
-
-/// Extracts the list of files that will be modified in-place.
-///
-/// Uses three strategies:
-/// 1. Everything after `--` delimiter is treated as a file
-/// 2. `--files <listfile>` reads filenames from a file
-/// 3. Heuristic mode: non-option arguments are assumed to be files
-///
-/// If `--` is present, only strategies 1 and 2 are used (strict mode).
-fn collect_files_for_inplace(args: &[String]) -> Result<Vec<PathBuf>, String> {
-    // Use a BTreeSet to deduplicate and sort
-    let mut files: BTreeSet<PathBuf> = BTreeSet::new();
-
-    // 1) `--` delimiter: everything after it is a file
-    if let Some(pos) = args.iter().position(|a| a == "--") {
-        for tok in &args[pos + 1..] {
-            if tok == "-" || tok == "--" {
-                continue;
-            }
-            files.insert(PathBuf::from(tok));
-        }
-    }
-
-    // 2) --files <listfile> / --files=<listfile>
-    if let Some(listfile) = find_option_value(args, "--files", "-files") {
-        add_files_from_list(&mut files, &listfile)?;
-    }
-
-    // If delimiter exists, we’re done (strict mode)
-    if args.iter().any(|a| a == "--") {
-        return Ok(files.into_iter().collect());
-    }
-
-    // 3) Heuristic mode: non-option tokens are files, skipping option values
-    let value_takers = [
-        "--Wno-error",
-        "-Wno-error",
-        "--assume-filename",
-        "-assume-filename",
-        "--cursor",
-        "-cursor",
-        "--fallback-style",
-        "-fallback-style",
-        "--ferror-limit",
-        "-ferror-limit",
-        "--files",
-        "-files",
-        "--length",
-        "-length",
-        "--lines",
-        "-lines",
-        "--offset",
-        "-offset",
-        "--qualifier-alignment",
-        "-qualifier-alignment",
-        "--style",
-        "-style",
-    ];
-
-    let mut skip_next = false;
-    for tok in args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if value_takers.contains(&tok.as_str()) {
-            skip_next = true;
-            continue;
-        }
-        if tok.starts_with('@') || tok == "-" || tok.starts_with('-') {
-            continue;
-        }
-        files.insert(PathBuf::from(tok));
-    }
-
-    Ok(files.into_iter().collect())
-}
-
-/// Finds the value of a command-line option, supporting both `--opt=value` and `--opt value` forms.
-fn find_option_value(args: &[String], long: &str, short: &str) -> Option<String> {
-    // --opt=value
-    for a in args {
-        if let Some(rest) = a.strip_prefix(&(long.to_string() + "=")) {
-            return Some(rest.to_string());
-        }
-        if let Some(rest) = a.strip_prefix(&(short.to_string() + "=")) {
-            return Some(rest.to_string());
-        }
-    }
-    // --opt value
-    let mut it = args.iter().peekable();
-    while let Some(a) = it.next() {
-        if a == long || a == short {
-            return it.peek().cloned().cloned();
-        }
-    }
-    None
-}
-
-fn add_files_from_list(out: &mut BTreeSet<PathBuf>, listfile: &str) -> Result<(), String> {
-    let content = fs::read_to_string(listfile)
-        .map_err(|e| format!("failed to read --files list '{}': {e}", listfile))?;
-    for line in content.lines() {
-        let t = line.trim();
-        if t.is_empty() {
-            continue;
-        }
-        out.insert(PathBuf::from(t));
-    }
-    Ok(())
 }
