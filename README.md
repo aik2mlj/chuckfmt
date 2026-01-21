@@ -20,12 +20,6 @@ ChucK's syntax includes unique operators like `=>`, `@=>`, `<<<`/`>>>`, and `-->
 
 ## 🚀 Installation
 
-### From source (requires Rust)
-
-```bash
-cargo install --path .
-```
-
 ### Pre-built binaries
 
 Download from [Releases](../../releases) for:
@@ -34,12 +28,37 @@ Download from [Releases](../../releases) for:
 - 🍎 macOS (Intel, Apple Silicon)
 - 🪟 Windows (x86_64, aarch64)
 
+### From source (requires Rust)
+
+```bash
+cargo install --path .
+```
+
 ### Requirements
 
-`clang-format` must be available:
+`clang-format` must be installed:
 
-- **On PATH**: Just install `clang-format` via your package manager
-- **Custom path**: Set `CLANG_FORMAT_BIN=/path/to/clang-format`
+```bash
+# Debian/Ubuntu
+sudo apt install clang-format
+
+# Fedora
+sudo dnf install clang-tools-extra
+
+# Arch
+sudo pacman -S clang
+
+# macOS
+brew install clang-format
+
+# Windows (winget)
+winget install LLVM.LLVM
+
+# Windows (choco)
+choco install llvm
+```
+
+Or set `CLANG_FORMAT_BIN=/path/to/clang-format` to use a custom path.
 
 ## 📖 Usage
 
@@ -77,6 +96,47 @@ UseTab: Never
 ```
 
 The formatter automatically adds `--assume-filename=code.cs` if not specified, which tells `clang-format` to use C#-like formatting rules (a reasonable approximation for ChucK).
+
+## 💻 VS Code Integration
+
+To auto-format ChucK files on save:
+
+1. Install the [Run on Save](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) extension
+
+2. Add to your `.vscode/settings.json`:
+
+```json
+{
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "\\.ck$",
+        "cmd": "chuckfmt -i ${file}"
+      }
+    ]
+  }
+}
+```
+
+Now every `.ck` file will be formatted automatically when you save.
+
+## 🐱 Neovim Integration
+
+Using [conform.nvim](https://github.com/stevearc/conform.nvim):
+
+```lua
+require("conform").setup({
+  formatters_by_ft = {
+    chuck = { "chuckfmt" },
+  },
+  formatters = {
+    chuckfmt = {
+      command = "chuckfmt",
+      stdin = true,
+    },
+  },
+})
+```
 
 ## 🔧 How it works
 
