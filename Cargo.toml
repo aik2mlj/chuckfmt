@@ -1,0 +1,16 @@
+[package]
+name = "chuckfmt"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+regex = "1"
+once_cell = "1"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+# panic = "abort"
+opt-level = "z"
+
