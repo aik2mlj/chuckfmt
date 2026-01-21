@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ---- Configuration: add your extra sed commands here ----
+SED_ARGS=(
+    -E
+    -e ':a;N;$!ba;s/=[[:space:]]*>/=>/g; s/=[[:space:]]*</=</g; s/@[[:space:]]*=>/@=>/g; s/=[[:space:]]*\^[[:space:]]*/=^ /g' # "= >" -> "=>" and "@ =>" -> "@=>" and "= ^A" -> "=^ A"
+    -e 's/([0-9]+(\.[0-9]*)?)[[:space:]]+::/\1::/g'                                                                           # "1 ::second" -> "1::second"
+    -e 's/<<<[[:space:]]*/<<< /g'                                                                                             # add one padding after <<<
+    -e 's/< < <[[:space:]]*/<<< /g'                                                                                           # add one padding after <<<
+    -e 's/[[:space:]]*>>>[[:space:]]*;/ >>>;/g'                                                                               # add one padding before >>>
+    -e 's/%[[:space:]]*\(/%\(/g'
+    -e 's/-[[:space:]]*-[[:space:]]*>/-->/g' # "-- >" -> "-->"
+)
+
+SED_BIN="${SED_BIN:-sed}"
+CLANG_FORMAT_BIN="${CLANG_FORMAT_BIN:-clang-format}"
+
+apply_sed() {
+    if ((${#SED_ARGS[@]} == 0)); then
+        cat
+    else
+        "$SED_BIN" "${SED_ARGS[@]}"
+    fi
+}
+
+has_assume_filename() {
+    # returns 0 if user already provided --assume-filename (or -assume-filename)
+    local o
+    for o in "$@"; do
+        [[ "$o" == --assume-filename* || "$o" == -assume-filename* ]] && return 0
+    done
+    return 1
+}
+
+format_ck_via_stdin_to_stdout() {
+    # $1 = file path, rest = clang-format options (NO -i, NO file paths)
+    local f="$1"
+    shift
+    "$CLANG_FORMAT_BIN" "$@" <"$f" | apply_sed
+}
+
+format_ck_via_stdin_to_file() {
+    # $1 = file path, rest = clang-format options (NO -i, NO file paths)
+    local f="$1"
+    shift
+    local tmp
+    tmp="$(mktemp -t chuckfmt.XXXXXX)"
+    "$CLANG_FORMAT_BIN" "$@" <"$f" | apply_sed >"$tmp"
+    mv "$tmp" "$f"
+}
+
+# Detect -i
+has_inplace=0
+for arg in "$@"; do
+    if [[ "$arg" == "-i" ]]; then
+        has_inplace=1
+        break
+    fi
+done
+
+# Find '--' delimiter position (if any)
+delim_pos=0
+idx=0
+for arg in "$@"; do
+    idx=$((idx + 1))
+    if [[ "$arg" == "--" ]]; then
+        delim_pos="$idx"
+        break
+    fi
+done
+
+# Determine files and options
+files=()
+opts=()
+
+if [[ "$delim_pos" -ne 0 ]]; then
+    # Strict mode: only args after '--' are files
+    # Example: cfmt -i --style LLVM -- a.cpp b.cpp
+    n=$#
+    for ((i = 1; i < delim_pos; i++)); do opts+=("${!i}"); done
+    for ((i = delim_pos + 1; i <= n; i++)); do
+        f="${!i}"
+        # Ignore "-" (stdin marker in some tools)
+        [[ "$f" == "-" ]] && continue
+        # Ignore accidental extra delimiter
+        [[ "$f" == "--" ]] && continue
+        files+=("$f")
+    done
+else
+    # Heuristic mode (no --): collect non-option tokens as files.
+    skip_next=0
+    n=$#
+    for ((i = 1; i <= n; i++)); do
+        arg="${!i}"
+
+        if [[ "$skip_next" -eq 1 ]]; then
+            skip_next=0
+            opts+=("$arg")
+            continue
+        fi
+
+        # Options that may take a separate value token
+        case "$arg" in
+        -Wno-error | --Wno-error | \
+            -assume-filename | --assume-filename | \
+            -cursor | --cursor | \
+            -fallback-style | --fallback-style | \
+            -ferror-limit | --ferror-limit | \
+            -files | --files | \
+            -length | --length | \
+            -lines | --lines | \
+            -offset | --offset | \
+            -qualifier-alignment | --qualifier-alignment | \
+            -style | --style)
+            skip_next=1
+            opts+=("$arg")
+            continue
+            ;;
+        esac
+
+        if [[ "$arg" == @* || "$arg" == "-" || "$arg" == -* ]]; then
+            opts+=("$arg")
+            continue
+        fi
+
+        files+=("$arg")
+    done
+fi
+
+if ! has_assume_filename "${opts[@]}"; then
+    # No --assume-filename specified, append it to options
+    opts+=("--assume-filename=code.cs")
+fi
+
+# Now we have a file list and an options list
+
+if [[ "$has_inplace" -eq 0 ]]; then
+    # Non-inplace:
+    # - If no args: behave like clang-format (stdin -> stdout)
+    # - If files are provided, assume they are ChucK and format via stdin with --assume-filename=code.cs
+    # If no files were detected, behave like clang-format: stdin -> stdout
+    if ((${#files[@]} == 0)); then
+        "$CLANG_FORMAT_BIN" "${opts[@]}" | apply_sed
+        exit 0
+    fi
+
+    # iterate files
+    for f in "${files[@]}"; do
+        format_ck_via_stdin_to_stdout "$f" "${opts[@]}"
+    done
+    exit 0
+fi
+
+# In-place mode: Format each file via stdin with --assume-filename=code.cs, then overwrite
+if ((${#files[@]} == 0)); then
+    echo "chuckfmt: -i requires at least one file" >&2
+    exit 2
+fi
+# first get options without -i
+opts_no_i=()
+for o in "${opts[@]}"; do
+    [[ "$o" == "-i" ]] && continue
+    opts_no_i+=("$o")
+done
+for f in "${files[@]}"; do
+    format_ck_via_stdin_to_file "$f" "${opts_no_i[@]}"
+done
