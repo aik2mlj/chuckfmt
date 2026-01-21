@@ -46,7 +46,7 @@ fn main() {
 
 /// Matches your bash wrapper behavior:
 /// - Parse args into opts + files (supports `--` delimiter; heuristic otherwise)
-/// - If user didn't provide assume-filename, append `--assume-filename=code.cs`
+/// - If user didn't provide assume-filename, append `--assume-filename=code.java`
 /// - Without `-i`:
 ///   - If no files: read stdin, run clang-format on stdin, transforms, stdout
 ///   - If files: for each file, run clang-format on stdin (file contents), transforms, stdout
@@ -63,7 +63,7 @@ fn real_main() -> Result<(), String> {
     expand_files_from_list(&opts, &mut files)?;
 
     if !has_assume_filename(&opts) {
-        opts.push("--assume-filename=code.cs".to_string());
+        opts.push("--assume-filename=code.java".to_string());
     }
 
     if !has_inplace {

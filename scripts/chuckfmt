@@ -130,7 +130,7 @@ fi
 
 if ! has_assume_filename "${opts[@]}"; then
     # No --assume-filename specified, append it to options
-    opts+=("--assume-filename=code.cs")
+    opts+=("--assume-filename=code.java")
 fi
 
 # Now we have a file list and an options list
@@ -138,7 +138,7 @@ fi
 if [[ "$has_inplace" -eq 0 ]]; then
     # Non-inplace:
     # - If no args: behave like clang-format (stdin -> stdout)
-    # - If files are provided, assume they are ChucK and format via stdin with --assume-filename=code.cs
+    # - If files are provided, assume they are ChucK and format via stdin with --assume-filename=code.java
     # If no files were detected, behave like clang-format: stdin -> stdout
     if ((${#files[@]} == 0)); then
         "$CLANG_FORMAT_BIN" "${opts[@]}" | apply_sed
@@ -152,7 +152,7 @@ if [[ "$has_inplace" -eq 0 ]]; then
     exit 0
 fi
 
-# In-place mode: Format each file via stdin with --assume-filename=code.cs, then overwrite
+# In-place mode: Format each file via stdin with --assume-filename=code.java, then overwrite
 if ((${#files[@]} == 0)); then
     echo "chuckfmt: -i requires at least one file" >&2
     exit 2

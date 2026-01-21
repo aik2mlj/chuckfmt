@@ -95,7 +95,7 @@ IndentWidth: 4
 UseTab: Never
 ```
 
-The formatter automatically adds `--assume-filename=code.cs` if not specified, which tells `clang-format` to use C#-like formatting rules (a reasonable approximation for ChucK).
+The formatter automatically adds `--assume-filename=code.java` if not specified, which tells `clang-format` to use Java-like formatting rules (a reasonable approximation for ChucK syntax).
 
 ## 💻 VS Code Integration
 
