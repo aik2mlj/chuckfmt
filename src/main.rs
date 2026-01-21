@@ -10,11 +10,16 @@ use std::process::{Command, Stdio};
 
 // Allow any whitespace (including newlines) between tokens, because clang-format can emit "=\n  >".
 static RE_STITCH_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"=\s*>").unwrap());
+static RE_STITCH_LEFT_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"=\s*<").unwrap());
 static RE_STITCH_AT_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"@\s*=>").unwrap());
+static RE_STITCH_EQ_CARET_PAD: Lazy<Regex> = Lazy::new(|| Regex::new(r"=\s*\^\s*").unwrap());
 static RE_NUM_SPACE_COLON: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"([0-9]+(?:\.[0-9]*)?)\s+::").unwrap());
 static RE_PAD_LSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"<<<\s*").unwrap());
-static RE_PAD_RSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s*>>>").unwrap());
+static RE_PAD_LSHIFT_MAL: Lazy<Regex> = Lazy::new(|| Regex::new(r"< < <\s*").unwrap());
+static RE_PAD_RSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s*>>>\s*;").unwrap());
+static RE_PERCENT: Lazy<Regex> = Lazy::new(|| Regex::new(r"%\s*\(").unwrap());
+static RE_LONG_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"-\s*-\s*>").unwrap());
 
 /// Applies ChucK-specific formatting transforms to the input string.
 ///
@@ -26,10 +31,15 @@ static RE_PAD_RSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s*>>>").unwrap())
 /// - `...>>>` → ` >>>` (normalize debugging output operator padding)
 fn apply_transforms(s: &str) -> String {
     let s = RE_STITCH_ARROW.replace_all(s, "=>");
+    let s = RE_STITCH_LEFT_ARROW.replace_all(&s, "=<");
     let s = RE_STITCH_AT_ARROW.replace_all(&s, "@=>");
+    let s = RE_STITCH_EQ_CARET_PAD.replace_all(&s, "=^ ");
     let s = RE_NUM_SPACE_COLON.replace_all(&s, "$1::");
     let s = RE_PAD_LSHIFT.replace_all(&s, "<<< ");
-    let s = RE_PAD_RSHIFT.replace_all(&s, " >>>");
+    let s = RE_PAD_LSHIFT_MAL.replace_all(&s, "<<< ");
+    let s = RE_PAD_RSHIFT.replace_all(&s, " >>>;");
+    let s = RE_PERCENT.replace_all(&s, "%(");
+    let s = RE_LONG_ARROW.replace_all(&s, "-->");
     s.into_owned()
 }
 
