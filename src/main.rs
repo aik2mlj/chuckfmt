@@ -27,6 +27,12 @@ fn apply_transforms(s: &str) -> String {
     let s = regex_replace_all!(r"\s*-\s*-\s*>\s*", &s, " --> ");
     let s = regex_replace_all!(r"(?m)^([+-])\s+([0-9]+(?:\.[0-9]*)?|\.[0-9]+)", &s, "$1$2");
     let s = regex_replace_all!(r"spork\s*~\s*", &s, "spork ~ ");
+    // 2 *b -> 2 * b
+    let s = regex_replace_all!(
+        r"([A-Za-z0-9_\)\]])\s*(\*)([A-Za-z0-9_\(\[])",
+        &s,
+        "$1 $2 $3"
+    );
 
     // remove the ";" we added after @import statements
     let s = regex_replace_all!(r#"(?m)^(\s*@import.*);$"#, &s, "$1");
