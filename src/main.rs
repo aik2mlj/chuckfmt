@@ -34,7 +34,11 @@ fn apply_transforms(s: &str) -> String {
     // --> formatting
     let s = regex_replace_all!(r"\s*-\s*-\s*>\s*", &s, " --> ");
     // - 3.14 -> -3.14 on line starts
-    let s = regex_replace_all!(r"(?m)^([+-])\s+([0-9]+(?:\.[0-9]*)?|\.[0-9]+)", &s, "$1$2");
+    let s = regex_replace_all!(
+        r"(?m)^(\s*[+-])\s+([A-Za-z_\(\[]|[0-9]+(?:\.[0-9]*)?|\.[0-9]+)",
+        &s,
+        "$1$2"
+    );
     // spork ~foo -> spork ~ foo
     let s = regex_replace_all!(r"spork\s*~\s*", &s, "spork ~ ");
     // 2 *b -> 2 * b
