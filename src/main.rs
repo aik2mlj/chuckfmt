@@ -1,5 +1,4 @@
-use once_cell::sync::Lazy;
-use regex::Regex;
+use lazy_regex::regex_replace_all;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -7,34 +6,30 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-// Allow any whitespace (including newlines) between tokens, because clang-format can emit "=\n  >".
-static RE_STITCH_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"=\s*>").unwrap());
-static RE_STITCH_LEFT_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"=\s*<").unwrap());
-static RE_STITCH_AT_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"@\s*=>").unwrap());
-static RE_STITCH_EQ_CARET_PAD: Lazy<Regex> = Lazy::new(|| Regex::new(r"=\s*\^\s*").unwrap());
-static RE_NUM_SPACE_COLON: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9]+(?:\.[0-9]*)?)\s+::").unwrap());
-static RE_PAD_LSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"<<<\s*").unwrap());
-static RE_PAD_LSHIFT_MAL: Lazy<Regex> = Lazy::new(|| Regex::new(r"< < <\s*").unwrap());
-static RE_PAD_RSHIFT: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s*>>>\s*;").unwrap());
-static RE_PERCENT: Lazy<Regex> = Lazy::new(|| Regex::new(r"%\s*\(").unwrap());
-static RE_LONG_ARROW: Lazy<Regex> = Lazy::new(|| Regex::new(r"-\s*-\s*>").unwrap());
-static RE_UNARY_SIGN_NUM: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^([+-])\s+([0-9]+(?:\.[0-9]*)?|\.[0-9]+)").unwrap());
+fn apply_pre_formatting_transforms(s: &str) -> String {
+    // add a ";" after @import statements to help clang-format parse them correctly
+    let s = regex_replace_all!(r#"(?m)^(\s*@import\s*\{?\s*".*"\s*?\}?\s*?)$"#, &s, "$1;");
+    s.into_owned()
+}
 
 /// Applies ChucK-specific formatting transforms to the input string.
 fn apply_transforms(s: &str) -> String {
-    let s = RE_STITCH_ARROW.replace_all(s, "=>");
-    let s = RE_STITCH_LEFT_ARROW.replace_all(&s, "=<");
-    let s = RE_STITCH_AT_ARROW.replace_all(&s, "@=>");
-    let s = RE_STITCH_EQ_CARET_PAD.replace_all(&s, "=^ ");
-    let s = RE_NUM_SPACE_COLON.replace_all(&s, "$1::");
-    let s = RE_PAD_LSHIFT.replace_all(&s, "<<< ");
-    let s = RE_PAD_LSHIFT_MAL.replace_all(&s, "<<< ");
-    let s = RE_PAD_RSHIFT.replace_all(&s, " >>>;");
-    let s = RE_PERCENT.replace_all(&s, "%(");
-    let s = RE_LONG_ARROW.replace_all(&s, "-->");
-    let s = RE_UNARY_SIGN_NUM.replace_all(&s, "$1$2");
+    // Allow any whitespace (including newlines) between tokens, because clang-format can emit "=\n  >".
+    let s = regex_replace_all!(r"=\s*>", &s, "=>");
+    let s = regex_replace_all!(r"=\s*<", &s, "=<");
+    let s = regex_replace_all!(r"@\s*=>", &s, "@=>");
+    let s = regex_replace_all!(r"=\s*\^\s*", &s, "=^ ");
+    let s = regex_replace_all!(r"([0-9]+(?:\.[0-9]*)?)\s+::", &s, "$1::");
+    let s = regex_replace_all!(r"<<<\s*", &s, "<<< ");
+    let s = regex_replace_all!(r"< < <\s*", &s, "<<< ");
+    let s = regex_replace_all!(r"\s*>>>\s*;", &s, " >>>;");
+    let s = regex_replace_all!(r"%\s*\(", &s, "%(");
+    let s = regex_replace_all!(r"\s*-\s*-\s*>\s*", &s, " --> ");
+    let s = regex_replace_all!(r"(?m)^([+-])\s+([0-9]+(?:\.[0-9]*)?|\.[0-9]+)", &s, "$1$2");
+    let s = regex_replace_all!(r"spork\s*~\s*", &s, "spork ~ ");
+
+    // remove the ";" we added after @import statements
+    let s = regex_replace_all!(r#"(?m)^(\s*@import.*);$"#, &s, "$1");
     s.into_owned()
 }
 
@@ -77,8 +72,7 @@ fn real_main() -> Result<(), String> {
                 .read_to_string(&mut input)
                 .map_err(|e| format!("failed to read stdin: {e}"))?;
 
-            let formatted = run_clang_format_on_stdin_capture(&clang_format, &opts, &input)?;
-            let fixed = apply_transforms(&formatted);
+            let fixed = process_string(&clang_format, &opts, &input)?;
 
             io::stdout()
                 .write_all(fixed.as_bytes())
@@ -92,8 +86,7 @@ fn real_main() -> Result<(), String> {
             let input = fs::read_to_string(&f)
                 .map_err(|e| format!("failed to read {}: {e}", f.display()))?;
 
-            let formatted = run_clang_format_on_stdin_capture(&clang_format, &opts, &input)?;
-            let fixed = apply_transforms(&formatted);
+            let fixed = process_string(&clang_format, &opts, &input)?;
 
             out.write_all(fixed.as_bytes())
                 .map_err(|e| format!("failed to write stdout: {e}"))?;
@@ -113,8 +106,7 @@ fn real_main() -> Result<(), String> {
         let input =
             fs::read_to_string(&f).map_err(|e| format!("failed to read {}: {e}", f.display()))?;
 
-        let formatted = run_clang_format_on_stdin_capture(&clang_format, &opts_no_i, &input)?;
-        let fixed = apply_transforms(&formatted);
+        let fixed = process_string(&clang_format, &opts_no_i, &input)?;
 
         // Match bash behavior: overwrite the file (no "only if changed" optimization)
         fs::write(&f, fixed).map_err(|e| format!("failed to write {}: {e}", f.display()))?;
@@ -335,6 +327,12 @@ fn find_in_path(program: String) -> Option<PathBuf> {
 }
 
 // -------------------- Running clang-format (stdin -> stdout capture) --------------------
+
+fn process_string(clang_format: &Path, opts: &[String], input: &str) -> Result<String, String> {
+    let pre_formatted = apply_pre_formatting_transforms(input);
+    let formatted = run_clang_format_on_stdin_capture(clang_format, opts, &pre_formatted)?;
+    Ok(apply_transforms(&formatted))
+}
 
 /// Runs clang-format by sending `input` to stdin, capturing stdout as a String.
 ///
