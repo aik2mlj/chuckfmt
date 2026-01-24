@@ -43,11 +43,11 @@ fn apply_transforms(s: &str) -> String {
     );
     // spork ~foo -> spork ~ foo
     let s = regex_replace_all!(r"spork\s*~\s*", &s, "spork ~ ");
-    // 2 *b -> 2 * b
+    // 2 *b -> 2 * b (not starting with / or whitespace to avoid comments)
     let s = regex_replace_all!(
-        r"([A-Za-z0-9_\)\]])\s*(\*)([A-Za-z0-9_\(\[])",
+        r"(?m)^(\s*[^/\s][^\n]*?)([A-Za-z0-9_\)\]])\s*(\*)([A-Za-z0-9_\(\[])",
         &s,
-        "$1 $2 $3"
+        "$1$2 $3 $4"
     );
 
     // remove the ";" we added after @import statements
