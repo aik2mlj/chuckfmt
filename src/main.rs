@@ -29,8 +29,8 @@ fn apply_transforms(s: &str) -> String {
     let s = regex_replace_all!(r"< < <\s*", &s, "<<< ");
     // >>> formatting
     let s = regex_replace_all!(r"\s*>>>\s*;", &s, " >>>;");
-    // % ( -> $(
-    let s = regex_replace_all!(r"%\s*\(", &s, "%(");
+    // % ( -> $( for polar literal spacing only
+    let s = regex_replace_all!(r"(?m)(^|[=\(,;\[\{:+\-*/&|^!<>])(\s*)%\s+\(", &s, "$1$2%(");
     // --> formatting
     let s = regex_replace_all!(r"\s*-\s*-\s*>\s*", &s, " --> ");
     // --< formatting
