@@ -55,6 +55,143 @@ fn apply_transforms(s: &str) -> String {
     s.into_owned()
 }
 
+// -------------------- Comment-preserving transform wrapper --------------------
+
+/// Segment types for parsing: code that should be transformed vs comments that should be preserved.
+#[derive(Debug)]
+enum Segment {
+    Code(String),
+    Comment(String),
+}
+
+/// Parses input into segments of code and comments.
+/// Handles // line comments, /* */ block comments, and string/char literals correctly.
+fn parse_segments(input: &str) -> Vec<Segment> {
+    let mut segments = Vec::new();
+    let mut current_code = String::new();
+    let chars: Vec<char> = input.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        // Check for string literal
+        if chars[i] == '"' {
+            current_code.push(chars[i]);
+            i += 1;
+            while i < len {
+                if chars[i] == '\\' && i + 1 < len {
+                    current_code.push(chars[i]);
+                    current_code.push(chars[i + 1]);
+                    i += 2;
+                } else if chars[i] == '"' {
+                    current_code.push(chars[i]);
+                    i += 1;
+                    break;
+                } else {
+                    current_code.push(chars[i]);
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        // Check for char literal
+        if chars[i] == '\'' {
+            current_code.push(chars[i]);
+            i += 1;
+            while i < len {
+                if chars[i] == '\\' && i + 1 < len {
+                    current_code.push(chars[i]);
+                    current_code.push(chars[i + 1]);
+                    i += 2;
+                } else if chars[i] == '\'' {
+                    current_code.push(chars[i]);
+                    i += 1;
+                    break;
+                } else {
+                    current_code.push(chars[i]);
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        // Check for line comment
+        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '/' {
+            // Flush current code
+            if !current_code.is_empty() {
+                segments.push(Segment::Code(std::mem::take(&mut current_code)));
+            }
+            let mut comment = String::new();
+            comment.push(chars[i]);
+            comment.push(chars[i + 1]);
+            i += 2;
+            while i < len && chars[i] != '\n' {
+                comment.push(chars[i]);
+                i += 1;
+            }
+            // Include the newline in the comment
+            if i < len && chars[i] == '\n' {
+                comment.push(chars[i]);
+                i += 1;
+            }
+            segments.push(Segment::Comment(comment));
+            continue;
+        }
+
+        // Check for block comment
+        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '*' {
+            // Flush current code
+            if !current_code.is_empty() {
+                segments.push(Segment::Code(std::mem::take(&mut current_code)));
+            }
+            let mut comment = String::new();
+            comment.push(chars[i]);
+            comment.push(chars[i + 1]);
+            i += 2;
+            while i < len {
+                if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
+                    comment.push(chars[i]);
+                    comment.push(chars[i + 1]);
+                    i += 2;
+                    break;
+                } else {
+                    comment.push(chars[i]);
+                    i += 1;
+                }
+            }
+            segments.push(Segment::Comment(comment));
+            continue;
+        }
+
+        // Regular character
+        current_code.push(chars[i]);
+        i += 1;
+    }
+
+    // Flush remaining code
+    if !current_code.is_empty() {
+        segments.push(Segment::Code(current_code));
+    }
+
+    segments
+}
+
+/// Applies transforms only to code segments, preserving comments unchanged.
+fn apply_transforms_preserving_comments(input: &str) -> String {
+    let segments = parse_segments(input);
+    let mut result = String::new();
+
+    for segment in segments {
+        match segment {
+            Segment::Code(code) => result.push_str(&apply_transforms(&code)),
+            Segment::Comment(comment) => result.push_str(&comment),
+        }
+    }
+
+    result
+}
+
 // -------------------- Main --------------------
 
 fn main() {
@@ -353,7 +490,7 @@ fn find_in_path(program: String) -> Option<PathBuf> {
 fn process_string(clang_format: &Path, opts: &[String], input: &str) -> Result<String, String> {
     let pre_formatted = apply_pre_formatting_transforms(input);
     let formatted = run_clang_format_on_stdin_capture(clang_format, opts, &pre_formatted)?;
-    Ok(apply_transforms(&formatted))
+    Ok(apply_transforms_preserving_comments(&formatted))
 }
 
 /// Runs clang-format by sending `input` to stdin, capturing stdout as a String.
