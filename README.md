@@ -15,8 +15,12 @@ ChucK's syntax includes unique operators like `=>`, `@=>`, `<<<`/`>>>`, and `-->
 | Time literal        | `1 ::second`        | `1::second`     |
 | Debug print (open)  | `<<<x`              | `<<< x`         |
 | Debug print (close) | `x>>>;`             | `x >>>;`        |
-| .....               | `% (`               | `%(`            |
-| gruck operator      | `-- >`              | `-->`           |
+| Polar literal       | `% (`               | `%(`            |
+| Spork (function)    | `spork ~foo`        | `spork ~ foo`   |
+| Gruck operator      | `-- >`              | `-->`           |
+| Ungruck operator    | `-- <`              | `--<`           |
+| Multiplication      | `2 *b`              | `2 * b`         |
+| Leading sign        | `- 3.14`            | `-3.14`         |
 
 ## 🚀 Installation
 
@@ -141,9 +145,10 @@ require("conform").setup({
 ## 🔧 How it works
 
 1. Reads ChucK source code (from file or stdin)
-2. Pipes it through `clang-format` with appropriate options
-3. Applies regex-based transforms to fix ChucK-specific operators
-4. Outputs the result (to stdout or overwrites the file with `-i`)
+2. Applies pre-processing (e.g., temporarily modifies `@import` for clang-format compatibility)
+3. Pipes it through `clang-format` with appropriate options
+4. Applies regex-based transforms to fix ChucK-specific operators (comments are preserved)
+5. Outputs the result (to stdout or overwrites the file with `-i`)
 
 ## 🧪 Testing
 
