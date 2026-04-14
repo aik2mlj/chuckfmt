@@ -24,6 +24,12 @@ ChucK's syntax includes unique operators like `=>`, `@=>`, `<<<`/`>>>`, and `-->
 
 ## 🚀 Installation
 
+### Homebrew (macOS)
+
+```bash
+brew install aik2mlj/tap/chuckfmt
+```
+
 ### Pre-built binaries
 
 Download from [Releases](../../releases) for:
