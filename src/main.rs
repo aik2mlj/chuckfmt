@@ -216,12 +216,10 @@ fn real_main() -> Result<(), String> {
 
     let has_inplace = args.iter().any(|a| a == "-i");
 
-    let (mut opts, mut files) = split_opts_files(&args);
+    let (opts, mut files) = split_opts_files(&args);
     expand_files_from_list(&opts, &mut files)?;
 
-    if !has_assume_filename(&opts) {
-        opts.push("--assume-filename=code.java".to_string());
-    }
+    let user_has_assume = has_assume_filename(&opts);
 
     if !has_inplace {
         // If no files detected, behave like clang-format: stdin -> stdout
@@ -231,7 +229,8 @@ fn real_main() -> Result<(), String> {
                 .read_to_string(&mut input)
                 .map_err(|e| format!("failed to read stdin: {e}"))?;
 
-            let fixed = process_string(&clang_format, &opts, &input)?;
+            let stdin_opts = assume_filename_opts(&opts, user_has_assume, None);
+            let fixed = process_string(&clang_format, &stdin_opts, &input)?;
 
             io::stdout()
                 .write_all(fixed.as_bytes())
@@ -245,7 +244,8 @@ fn real_main() -> Result<(), String> {
             let input = fs::read_to_string(&f)
                 .map_err(|e| format!("failed to read {}: {e}", f.display()))?;
 
-            let fixed = process_string(&clang_format, &opts, &input)?;
+            let file_opts = assume_filename_opts(&opts, user_has_assume, Some(&f));
+            let fixed = process_string(&clang_format, &file_opts, &input)?;
 
             out.write_all(fixed.as_bytes())
                 .map_err(|e| format!("failed to write stdout: {e}"))?;
@@ -265,7 +265,8 @@ fn real_main() -> Result<(), String> {
         let input =
             fs::read_to_string(&f).map_err(|e| format!("failed to read {}: {e}", f.display()))?;
 
-        let fixed = process_string(&clang_format, &opts_no_i, &input)?;
+        let file_opts = assume_filename_opts(&opts_no_i, user_has_assume, Some(&f));
+        let fixed = process_string(&clang_format, &file_opts, &input)?;
 
         // Match bash behavior: overwrite the file (no "only if changed" optimization)
         fs::write(&f, fixed).map_err(|e| format!("failed to write {}: {e}", f.display()))?;
@@ -283,6 +284,30 @@ fn has_assume_filename(opts: &[String]) -> bool {
             || o.starts_with("--assume-filename=")
             || o.starts_with("-assume-filename=")
     })
+}
+
+/// Builds a copy of `opts` with `--assume-filename` set appropriately.
+///
+/// When formatting a file, uses the file's real directory so clang-format finds
+/// `.clang-format` config relative to that file (keeping `code.java` as the
+/// filename for Java language detection).  For stdin, falls back to `code.java`
+/// (searches from CWD).  If the user already supplied `--assume-filename`,
+/// returns opts unchanged.
+fn assume_filename_opts(opts: &[String], user_has_assume: bool, file: Option<&Path>) -> Vec<String> {
+    if user_has_assume {
+        return opts.to_vec();
+    }
+    let mut result = opts.to_vec();
+    let assume = match file {
+        Some(f) => {
+            let abs = fs::canonicalize(f).unwrap_or_else(|_| f.to_path_buf());
+            let dir = abs.parent().unwrap_or(Path::new("."));
+            format!("--assume-filename={}", dir.join("code.java").display())
+        }
+        None => "--assume-filename=code.java".to_string(),
+    };
+    result.push(assume);
+    result
 }
 
 /// Mirrors your bash wrapper parsing:
