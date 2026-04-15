@@ -214,6 +214,25 @@ fn real_main() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let clang_format = resolve_clang_format()?;
 
+    // Handle info flags before touching stdin
+    if args.iter().any(|a| a == "--help") {
+        return print_help(&clang_format);
+    }
+    if args.iter().any(|a| a == "--version") {
+        return print_version(&clang_format);
+    }
+    // Forward remaining info flags directly (--help-list, --help-hidden, etc.)
+    if args.iter().any(|a| a.starts_with("--help-")) {
+        std::process::exit(
+            Command::new(&clang_format)
+                .args(&args)
+                .status()
+                .map_err(|e| format!("failed to launch clang-format: {e}"))?
+                .code()
+                .unwrap_or(0),
+        );
+    }
+
     let has_inplace = args.iter().any(|a| a == "-i");
 
     let (opts, mut files) = split_opts_files(&args);
@@ -272,6 +291,52 @@ fn real_main() -> Result<(), String> {
         fs::write(&f, fixed).map_err(|e| format!("failed to write {}: {e}", f.display()))?;
     }
 
+    Ok(())
+}
+
+// -------------------- Help / version --------------------
+
+fn print_help(clang_format: &Path) -> Result<(), String> {
+    let pkg = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    println!("{pkg} {version} - A clang-format wrapper for ChucK source files.");
+    println!();
+    println!("Applies ChucK-specific operator formatting on top of clang-format.");
+    println!("All other options are forwarded to clang-format.");
+    println!();
+    println!("USAGE: {pkg} [clang-format-options] [@<file>] [<file> ...]");
+    println!();
+
+    // Run clang-format --help and strip its header (everything before OPTIONS:)
+    let output = Command::new(clang_format)
+        .arg("--help")
+        .output()
+        .map_err(|e| format!("failed to launch clang-format: {e}"))?;
+    let help = String::from_utf8_lossy(&output.stdout);
+    let mut past_header = false;
+    for line in help.lines() {
+        if !past_header {
+            if line.starts_with("OPTIONS:") {
+                past_header = true;
+            } else {
+                continue;
+            }
+        }
+        println!("{line}");
+    }
+    Ok(())
+}
+
+fn print_version(clang_format: &Path) -> Result<(), String> {
+    println!(
+        "{} {}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
+    Command::new(clang_format)
+        .arg("--version")
+        .status()
+        .map_err(|e| format!("failed to launch clang-format: {e}"))?;
     Ok(())
 }
 
