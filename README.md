@@ -6,29 +6,7 @@ ChucK's syntax includes unique operators like `=>`, `@=>`, `<<<`/`>>>`, and `-->
 
 ## 🚀 Installation
 
-### Homebrew (macOS)
-
-```bash
-brew install aik2mlj/tap/chuckfmt clang-format
-```
-
-### Pre-built binaries
-
-Download from [Releases](../../releases) for:
-
-- 🐧 Linux (x86_64, aarch64, musl)
-- 🍎 macOS (Intel, Apple Silicon)
-- 🪟 Windows (x86_64, aarch64)
-
-### From source (requires Rust)
-
-```bash
-cargo install --path .
-```
-
-### Requirements
-
-`clang-format` must be installed:
+`clang-format` must be installed first: <a href="https://repology.org/project/chuckfmt/versions"> <img src="https://repology.org/badge/vertical-allrepos/chuckfmt.svg" alt="Packaging status" align="right"> </a>
 
 ```bash
 # Debian/Ubuntu
@@ -46,11 +24,48 @@ brew install clang-format
 # Windows (winget)
 winget install LLVM.LLVM
 
-# Windows (choco)
-choco install llvm
+# Windows (scoop)
+scoop install llvm
 ```
 
 Or set `CLANG_FORMAT_BIN=/path/to/clang-format` to use a custom path.
+
+#### 🍺 Homebrew (macOS/Linux)
+
+```bash
+brew install aik2mlj/tap/chuckfmt
+```
+
+#### 📦 AUR (Arch Linux)
+
+```bash
+# use pre-built binary
+paru -S chuckfmt-bin
+# or if you prefer, compile from source
+paru -S chuckfmt
+```
+
+#### 🍦 Scoop (Windows)
+
+```powershell
+scoop bucket add aik2mlj https://github.com/aik2mlj/scoop-bucket; scoop install aik2mlj/chuckfmt
+```
+
+#### 🛠️ Cargo (All platforms)
+
+```bash
+# use pre-built binary
+# you need to have cargo-binstall installed first
+cargo binstall chuckfmt
+# or compile from source
+cargo install chuckfmt
+```
+
+#### ⬇️ Download from Releases (All platforms)
+
+- Download the corresponding binary archive from [Releases](https://github.com/aik2mlj/canvas-downloader/releases)
+- Decompress the archive file
+- Move it to `$PATH` for easier access
 
 ## ⚙️ Configuration
 
