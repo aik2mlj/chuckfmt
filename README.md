@@ -109,26 +109,23 @@ The formatter automatically adds `--assume-filename=code.java` if not specified,
 
 ## 💻 VS Code Integration
 
-To auto-format ChucK files on save:
+To add `chuckfmt` as the custom formatter for ChucK files in VS Code:
 
-1. Install the [Run on Save](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) extension
+1. Install the [Custom Local Formatters](https://marketplace.visualstudio.com/items?itemName=jkillian.custom-local-formatters) extension
 
-2. Add to your `.vscode/settings.json`:
+2. Open your user settings via Command Palette (`Ctrl+Shift+P` or `F1`) → `Preferences: Open User Settings (JSON)`, add the following and save:
 
 ```json
-{
-  "emeraldwalk.runonsave": {
-    "commands": [
-      {
-        "match": "\\.ck$",
-        "cmd": "chuckfmt -i ${file}"
-      }
-    ]
-  }
+"customLocalFormatters.formatters": [
+  { "command": "chuckfmt", "languages": ["chuck"] }
+],
+"files.associations": { "*.ck": "chuck" },
+"[chuck]": {
+  "editor.formatOnSave": true
 }
 ```
 
-Now every `.ck` file will be formatted automatically when you save.
+If you don't like auto-format on save for ChucK files, set `editor.formatOnSave` to `false` in the `[chuck]` block. You can always manually trigger `Format Document` (`Ctrl+Shift+I`).
 
 ## 🐱 Neovim Integration
 
