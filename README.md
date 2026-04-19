@@ -2,32 +2,14 @@
 
 A fast code formatter for [ChucK](https://chuck.stanford.edu/) — the strongly-timed audio programming language.
 
-## ✨ What it does
-
 ChucK's syntax includes unique operators like `=>`, `@=>`, `<<<`/`>>>`, and `-->` that `clang-format` doesn't understand natively. **chuckfmt** wraps `clang-format` and applies ChucK-specific post-processing to fix these.
-
-| Operator            | clang-format output | chuckfmt output |
-| ------------------- | ------------------- | --------------- |
-| ChucK operator      | `= >`               | `=>`            |
-| UnChuck operator    | `= <`               | `=<`            |
-| At-chuck            | `@ =>`              | `@=>`           |
-| UpChucK operator    | `= ^ x`             | `=^ x`          |
-| Time literal        | `1 ::second`        | `1::second`     |
-| Debug print (open)  | `<<<x`              | `<<< x`         |
-| Debug print (close) | `x>>>;`             | `x >>>;`        |
-| Polar literal       | `% (`               | `%(`            |
-| Spork (function)    | `spork ~foo`        | `spork ~ foo`   |
-| Gruck operator      | `-- >`              | `-->`           |
-| Ungruck operator    | `-- <`              | `--<`           |
-| Multiplication      | `2 *b`              | `2 * b`         |
-| Leading sign        | `- 3.14`            | `-3.14`         |
 
 ## 🚀 Installation
 
 ### Homebrew (macOS)
 
 ```bash
-brew install aik2mlj/tap/chuckfmt
+brew install aik2mlj/tap/chuckfmt clang-format
 ```
 
 ### Pre-built binaries
@@ -70,33 +52,9 @@ choco install llvm
 
 Or set `CLANG_FORMAT_BIN=/path/to/clang-format` to use a custom path.
 
-## 📖 Usage
-
-```bash
-# Format file to stdout
-chuckfmt foo.ck
-
-# Format multiple files to stdout
-chuckfmt foo.ck bar.ck
-
-# Format in-place
-chuckfmt -i foo.ck bar.ck
-
-# Pipe from stdin
-cat foo.ck | chuckfmt
-
-# Use a file list
-chuckfmt -i --files filelist.txt
-
-# Explicit file delimiter (useful for files starting with -)
-chuckfmt -i --style=LLVM -- foo.ck bar.ck
-```
-
-All `clang-format` options are passed through. Run `clang-format --help` for details.
-
 ## ⚙️ Configuration
 
-chuckfmt uses `clang-format`'s [configuration system](https://clang.llvm.org/docs/ClangFormatStyleOptions.html). This might be a good starting point (`.clang-format` file):
+chuckfmt uses `clang-format`'s [configuration system](https://clang.llvm.org/docs/ClangFormatStyleOptions.html). This might be a good starting point:
 
 ```yaml
 BasedOnStyle: LLVM
@@ -105,7 +63,7 @@ IndentWidth: 4
 UseTab: Never
 ```
 
-The formatter automatically adds `--assume-filename=code.java` if not specified, which tells `clang-format` to use Java-like formatting rules (a reasonable approximation for ChucK syntax).
+Place this in a `.clang-format` file under your project root (for per-project settings) or home directory (for global settings).
 
 ## 💻 VS Code Integration
 
@@ -145,6 +103,30 @@ require("conform").setup({
 })
 ```
 
+## 📖 Command-line Usage
+
+```bash
+# Format file to stdout
+chuckfmt foo.ck
+
+# Format multiple files to stdout
+chuckfmt foo.ck bar.ck
+
+# Format in-place
+chuckfmt -i foo.ck bar.ck
+
+# Pipe from stdin
+cat foo.ck | chuckfmt
+
+# Use a file list
+chuckfmt -i --files filelist.txt
+
+# Explicit file delimiter (useful for files starting with -)
+chuckfmt -i --style=LLVM -- foo.ck bar.ck
+```
+
+All `clang-format` options are passed through. Run `chuckfmt --help` for details.
+
 ## 🔧 How it works
 
 1. Reads ChucK source code (from file or stdin)
@@ -153,6 +135,22 @@ require("conform").setup({
 4. Applies regex-based transforms to fix ChucK-specific operators (comments are preserved)
 5. Outputs the result (to stdout or overwrites the file with `-i`)
 
+
+| Operator            | clang-format output | chuckfmt output |
+| ------------------- | ------------------- | --------------- |
+| ChucK operator      | `= >`               | `=>`            |
+| UnChuck operator    | `= <`               | `=<`            |
+| At-chuck            | `@ =>`              | `@=>`           |
+| UpChucK operator    | `= ^ x`             | `=^ x`          |
+| Time literal        | `1 ::second`        | `1::second`     |
+| Debug print (open)  | `<<<x`              | `<<< x`         |
+| Debug print (close) | `x>>>;`             | `x >>>;`        |
+| Polar literal       | `% (`               | `%(`            |
+| Spork (function)    | `spork ~foo`        | `spork ~ foo`   |
+| Gruck operator      | `-- >`              | `-->`           |
+| Ungruck operator    | `-- <`              | `--<`           |
+| Multiplication      | `2 *b`              | `2 * b`         |
+| Leading sign        | `- 3.14`            | `-3.14`         |
 ## 🧪 Testing
 
 A test script is included to verify formatting doesn't break ChucK syntax:
