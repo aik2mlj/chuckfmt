@@ -89,13 +89,13 @@ To add `chuckfmt` as the custom formatter for ChucK files in VS Code:
 2. Open your user settings via Command Palette (`Ctrl+Shift+P` or `F1`) → `Preferences: Open User Settings (JSON)`, add the following and save:
 
 ```json
-"customLocalFormatters.formatters": [
-  { "command": "chuckfmt", "languages": ["chuck"] }
-],
-"files.associations": { "*.ck": "chuck" },
-"[chuck]": {
-  "editor.formatOnSave": true
-}
+    "customLocalFormatters.formatters": [
+        { "command": "chuckfmt", "languages": ["chuck"] }
+    ],
+    "files.associations": { "*.ck": "chuck" },
+    "[chuck]": {
+        "editor.formatOnSave": true
+    }
 ```
 
 If you don't like auto-format on save for ChucK files, set `editor.formatOnSave` to `false` in the `[chuck]` block. You can always manually trigger `Format Document` (`Ctrl+Shift+I`).
