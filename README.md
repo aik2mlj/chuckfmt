@@ -98,7 +98,9 @@ To add `chuckfmt` as the custom formatter for ChucK files in VS Code:
     }
 ```
 
-If you don't like auto-format on save for ChucK files, set `editor.formatOnSave` to `false` in the `[chuck]` block. You can always manually trigger `Format Document` (`Ctrl+Shift+I`).
+3. Now test it by opening a `.ck` file and saving — it should be auto-formatted!
+
+If you don't like format on save for ChucK files, set `editor.formatOnSave` to `false` in the `[chuck]` block. You can always manually trigger `Format Document` (`Ctrl+Shift+I`).
 
 ## 🐱 Neovim Integration
 
