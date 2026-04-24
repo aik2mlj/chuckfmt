@@ -120,6 +120,23 @@ require("conform").setup({
 })
 ```
 
+## 🪝 pre-commit Hook
+
+Auto-format `.ck` files before each commit with [pre-commit](https://pre-commit.com/). Make sure `chuckfmt` is installed, then add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: chuckfmt
+        name: chuckfmt
+        entry: chuckfmt -i
+        language: system
+        files: \.ck$
+```
+
+Then run `pre-commit install` to enable the hook.
+
 ## 📖 Command-line Usage
 
 ```bash
